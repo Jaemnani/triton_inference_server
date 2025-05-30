@@ -1,0 +1,23 @@
+name: "yolox_tiny_preprocess"
+backend: "python"
+input [
+    {
+        name: "preprocess_input"
+        data_type: TYPE_STRING
+        dims: [1]
+    }
+]
+output [
+    {
+        name: "preprocess_output"
+        data_type: TYPE_FP16
+        dims: [1, 3, 416, 416]
+    }
+]
+
+parameters: [
+    {
+        key: "model_input_size",
+        value: {string_value: "416,416"}
+    }
+]

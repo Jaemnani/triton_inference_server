@@ -1,0 +1,100 @@
+name: "ensemble_rtmdet_ins_tiny_coco80"
+platform: "ensemble"
+input [
+    {
+        name: "input_images"
+        data_type: TYPE_STRING
+        dims: [1]
+    }
+]
+output [
+    {
+        name: "output_boxes"
+        data_type: TYPE_FP32
+        dims: [-1, 4]
+    },
+    {
+        name: "output_scores"
+        data_type: TYPE_FP32
+        dims: [-1, 1]
+    },
+    {
+        name: "output_classes"
+        data_type: TYPE_INT32
+        dims: [-1, 1]
+    },
+    {
+        name: "output_masks"
+        data_type: TYPE_FP32
+        dims: [-1, 640, 640]
+    }
+]
+
+ensemble_scheduling {
+    step [
+        {
+            model_name: "rtmdet_ins_tiny_preprocess"
+            model_version: -1
+            input_map {
+                key: "preprocess_input"
+                value: "input_images"
+            }
+            output_map {
+                key: "preprocess_output"
+                value: "preprocess_result"
+            }
+        },
+        {
+            model_name: "rtmdet_ins_tiny_coco80_trt_fp16"
+            model_version: -1
+            input_map {
+                key: "input"
+                value: "preprocess_result"
+            }
+            output_map {
+                key: "dets"
+                value: "rtmdet_result_dets"
+            }
+            output_map {
+                key: "labels"
+                value: "rtmdet_result_labels"
+            }
+            output_map {
+                key: "masks"
+                value: "rtmdet_result_masks"
+            }
+        },
+        {
+            model_name: "rtmdet_ins_tiny_postprocess"
+            model_version: -1
+            input_map {
+                key: "postprocess_input_dets"
+                value: "rtmdet_result_dets"
+            }
+            input_map {
+                key: "postprocess_input_labels"
+                value: "rtmdet_result_labels"
+            }
+            input_map {
+                key: "postprocess_input_masks"
+                value: "rtmdet_result_masks"
+            }
+            output_map {
+                key: "postprocess_output_boxes"
+                value: "output_boxes"
+            }
+            output_map {
+                key: "postprocess_output_scores"
+                value: "output_scores"
+            }
+            output_map {
+                key: "postprocess_output_classes"
+                value: "output_classes"
+            }
+            output_map {
+                key: "postprocess_output_masks"
+                value: "output_masks"
+            }
+        }
+    ]
+}

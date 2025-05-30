@@ -1,0 +1,41 @@
+name: "yolox_tiny_postprocess"
+backend: "python"
+input [
+    {
+        name: "postprocess_input"
+        data_type: TYPE_FP16
+        dims: [1, 3549, -1]
+    }
+]
+output [
+    {
+        name: "postprocess_output_boxes"
+        data_type: TYPE_FP32
+        dims: [-1, 4]
+    },
+    {
+        name: "postprocess_output_scores"
+        data_type: TYPE_FP32
+        dims: [-1, 1]
+    },
+    {
+        name: "postprocess_output_classes"
+        data_type: TYPE_FP32
+        dims: [-1, 1]
+    }
+]
+
+parameters: [
+    {
+        key: "score_threshold",
+        value: {string_value: "0.1"}
+    },
+    {
+        key: "nms_threshold",
+        value: {string_value: "0.45"}
+    },
+    {
+        key: "model_input_size",
+        value: {string_value: "416,416"}
+    }
+]
