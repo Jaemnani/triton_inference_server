@@ -32,9 +32,7 @@ git clone -b v2.29.0 [https://github.com/triton-inference-server/server.git](htt
 
 We need to create a custom base image because the default images might be too large or lack specific backends. We use `compose.py` to pull a "triton_base" image containing only the required backends (`tensorrt`, `python`, `onnxruntime`).
 
-Bash
-
-```
+```Bash
 cd server
 python3 compose.py --output-name triton_base \
     --backend tensorrt \
@@ -48,9 +46,7 @@ python3 compose.py --output-name triton_base \
 
 Build the final Docker image named `triton_inference_server`. This image will contain the model repository and dependencies.
 
-Bash
-
-```
+```Bash
 # Go back to the root directory
 cd ..
 docker build -t triton_inference_server .
@@ -70,9 +66,7 @@ TensorRT models (`.plan` files) are highly optimized for specific GPU architectu
 
 Start a temporary container to perform the conversion.
 
-Bash
-
-```
+```Bash
 docker run -it --rm --name=triton_convert \
     --gpus=all --ipc=host --pid=host --shm-size=1g \
     -p 8000:8000 -p 8001:8001 -p 8002:8002 \
@@ -86,9 +80,7 @@ Inside the running container, execute the `select_model.sh` script.
 1. Select `1`, `2`, or `1 2` to convert the desired models.
 2. This generates the `.plan` (TensorRT engine) files.
 
-Bash
-
-```
+```Bash
 # Run inside the container
 /opt/tritonserver/model_repository/select_model.sh
 ```
@@ -97,9 +89,7 @@ Bash
 
 Once the conversion is finished and `.plan` files are created, save the container state as a new image (`triton_model_server`).
 
-Bash
-
-```
+```Bash
 # Run on the host machine
 docker commit -p triton_convert triton_model_server
 ```
@@ -110,9 +100,7 @@ docker commit -p triton_convert triton_model_server
 
 Run the final image (`triton_model_server`) which now contains the optimized TensorRT models.
 
-Bash
-
-```
+```Bash
 docker run -itd --name=triton_server \
     --gpus=all --ipc=host --pid=host --shm-size=1g \
     -p 8000:8000 -p 8001:8001 -p 8002:8002 \
@@ -137,9 +125,7 @@ docker run -itd --name=triton_server \
 
 For models using the Python backend in Triton, the directory structure must follow this hierarchy:
 
-Plaintext
-
-```
+```Text
 models
 |-- model_a
 |   |-- 1
