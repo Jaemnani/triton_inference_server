@@ -1,79 +1,155 @@
-# triton_inference_server
-Triton Inference Server Example with Docker
+# Triton Inference Server Example with Docker
 
-## Install 
-```
+This repository provides a guide and scripts to build a custom Triton Inference Server environment using Docker. It specifically addresses the need to convert ONNX models to TensorRT `.plan` files on the target GPU environment for maximum compatibility and performance.
+
+## 🛠️ 1. Installation & Preparation
+
+Set up the environment and download the necessary repositories.
+
+```bash
+# Create and activate virtual environment
 virtualenv venv_test
 source venv_test/bin/activate
 
+# Install requirements
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-* 배포용 버전에 맞는 NVIDIA 공식 Server Repository 다운로드
-* v2.29.0 = NGC Container 22.12
-```
-git clone -b v2.29.0 https://github.com/triton-inference-server/server.git
+### Download Official NVIDIA Server Repository
+Clone the repository matching the version used for deployment.
+
+* **Target Version:** v2.29.0 (Matches NGC Container 22.12)
+
+```bash
+git clone -b v2.29.0 [https://github.com/triton-inference-server/server.git](https://github.com/triton-inference-server/server.git)
 ```
 
-* 이미지 재구성 (기본 도커 이미지 -> 백앤드 포함 이미지로 재구성)
-"triton_base"이름으로 도커 이미지 풀
+
+## 🐳 2. Build Docker Images
+
+### Step 1: Reconfigure Base Image
+
+We need to create a custom base image because the default images might be too large or lack specific backends. We use `compose.py` to pull a "triton_base" image containing only the required backends (`tensorrt`, `python`, `onnxruntime`).
+
+Bash
+
 ```
 cd server
-python3 compose.py --output-name triton_base --backend tensorrt --backend python --backend onnxruntime --backend python --repoagent checksum --container-version 22.12
+python3 compose.py --output-name triton_base \
+    --backend tensorrt \
+    --backend python \
+    --backend onnxruntime \
+    --repoagent checksum \
+    --container-version 22.12
 ```
 
-* 배포용 도커로 만들기
+### Step 2: Build Deployment Image
+
+Build the final Docker image named `triton_inference_server`. This image will contain the model repository and dependencies.
+
+Bash
+
 ```
+# Go back to the root directory
+cd ..
 docker build -t triton_inference_server .
 ```
 
-docker run -it --rm --name=triton_convert --gpus=all --ipc=host --pid=host --shm-size=1g -p 8000:8000 -p 8001:8001 -p 8002:8002 triton_inference_server
+---
 
-시동 후, 실행 -> 1, 2, 1 2 중 하나 선택하여 onnx를 tensorrt로 변환. (plan 확장자 파일 생성 됨.)
-tensorrt모델이 환경 차이에 따라 다르게 변환되기 떄문에, 도커 이미지에 변환 하여 배포하면 동작하지 않을 수 있다.
-반면에 Onnx는 모든 환경에서 똑같이 동작하기 떄문에, 미리 포함하여 배포,
-사용될 서버 환경에서 변환을 하도록 하는 과정.
+## ⚙️ 3. Model Conversion Workflow (Important)
+
+**Why this step is necessary:**
+TensorRT models (`.plan` files) are highly optimized for specific GPU architectures. A plan file generated on one GPU (e.g., RTX 3090) might not work on another (e.g., T4 or A100).
+
+- **Strategy:** Distribute **ONNX** models (universal) inside the Docker image.
+- **Execution:** Convert ONNX to TensorRT **inside the container** on the actual server where it runs.
+
+### Step 1: Run Conversion Container
+
+Start a temporary container to perform the conversion.
+
+Bash
 
 ```
+docker run -it --rm --name=triton_convert \
+    --gpus=all --ipc=host --pid=host --shm-size=1g \
+    -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+    triton_inference_server
+```
+
+### Step 2: Execute Conversion Script
+
+Inside the running container, execute the `select_model.sh` script.
+
+1. Select `1`, `2`, or `1 2` to convert the desired models.
+2. This generates the `.plan` (TensorRT engine) files.
+
+Bash
+
+```
+# Run inside the container
 /opt/tritonserver/model_repository/select_model.sh
 ```
 
-변환이 완료된 docker 컨테이너를 commit을 이용해 스냅샷 생성
+### Step 3: Commit the Container
+
+Once the conversion is finished and `.plan` files are created, save the container state as a new image (`triton_model_server`).
+
+Bash
 
 ```
+# Run on the host machine
 docker commit -p triton_convert triton_model_server
 ```
 
-이후는 최종 도커 이미지인 triton_model_server만 수행함
+---
+
+## 🚀 4. Final Execution
+
+Run the final image (`triton_model_server`) which now contains the optimized TensorRT models.
+
+Bash
+
 ```
-docker run -itd --name=triton_server --gpus=all --ipc=host --pid=host --shm-size=1g -p 8000:8000 -p 8001:8001 -p 8002:8002 triton_model_server tritonserver --model-repository=/models
+docker run -itd --name=triton_server \
+    --gpus=all --ipc=host --pid=host --shm-size=1g \
+    -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+    triton_model_server tritonserver --model-repository=/models
 ```
-* port
-8000 : http
-8001 : grpc infernce
-8002 : metrics
 
-사전 탑재된 모델
-YOLOX-Tiny : Object Detection (COCO80 Classes) [Apache-2.0 license]
-RTMDet-Ins-tiny : Instance Segmentation (COCO80 Classes) [Apache-2.0 license]
+### Service Information
 
-[참고] 디렉토리 구조 예시
+- **Ports:**
+    - `8000`: HTTP
+    - `8001`: gRPC Inference
+    - `8002`: Metrics
+- **Pre-loaded Models:**
+    - **YOLOX-Tiny:** Object Detection (COCO 80 Classes) [Apache-2.0 license]
+    - **RTMDet-Ins-tiny:** Instance Segmentation (COCO 80 Classes) [Apache-2.0 license]
 
-파이썬 triton 모델은 아래와 같은 디렉토리 구조로 구성해야 함.
+---
 
+## 📂 Reference
 
+### Directory Structure Example
+
+For models using the Python backend in Triton, the directory structure must follow this hierarchy:
+
+Plaintext
+
+```
 models
 |-- model_a
 |   |-- 1
-|   |   `-- model.py
-|   |-- config.pbtxt
-|   |-- python3.6.tar.gz
-|   `-- triton_python_backend_stub
+|   |   ㄴ-- model.py           # Python backend logic
+|   |-- config.pbtxt           # Model configuration
+|   |-- python3.6.tar.gz       # (Optional) Custom environment
+|   ㄴ-- triton_python_backend_stub
+```
 
+### Useful Links
 
-
-
-[참고] 자료링크
-https://github.com/triton-inference-server/server/blob/main/docs/customization_guide/compose.md
-https://github.com/triton-inference-server/python_backend
+- [Triton Compose Guide](https://github.com/triton-inference-server/server/blob/main/docs/customization_guide/compose.md)
+- [Triton Python Backend](https://github.com/triton-inference-server/python_backend)
